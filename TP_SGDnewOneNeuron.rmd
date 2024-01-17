@@ -1,0 +1,232 @@
+
+<style>
+div.solution pre { background-color:lightblue; }
+div.solution pre.r { background-color:lightblue; }
+</style>
+
+On commence par fixer une graine au générateur aléatoire, pour rendre les résultats reproductibles. Les séquences de nombres aléatoires générées seront toujours les mêmes (sauf si on change la graine bien sûr!).
+```{r}
+set.seed(12345)     # pour des résultats reproductibles
+```
+
+# Exercice 1. Un vrai réseau de neurones
+
+Bon, en fait, on va prendre un réseau d'*un* neurone. Eh oui, un seul neurone, ce n'est pas beaucoup... mais c'est suffisant pour comprendre le principe de l'optimisation des paramètres sans passer un temps infini dans les rétropropagations de gradient :-) La rétropropagation correspond simplement à la dérivation d'une fonction composée, ici on n'en aura pas besoin puisque la fonction n'est pas composée.
+
+L'objectif ici n'est pas de trouver la meilleure méthode pour optimiser les paramètres d'une fonction aussi simple, mais d'illustrer sur un exemple minimal l'optimisation des poids d'un réseau de neurones.
+
+On imagine que l'on modélise une donnée de sortie réelle $y$, en fonction d'une donnée d'entrée réelle $x$, par la relation:
+
+$$ y = \sigma(w^* x + b^*) + \epsilon(x)$$
+où la fonction $\sigma$ est une fonction d'activation connue, $w^*$ et $b^*$ sont deux paramètres réels inconnus (un poids $w^*$ et un biais $b^*$), et où les $\epsilon(x)$ représentent des bruits centrés (le modèle n'est pas parfait, on l'oublie parfois...). On va grouper les deux paramètres $w^*$ et $b^*$ dans un vecteur $\theta^* = (w^*,b^*)$. On prendra comme fonction d'activation la fonction suivante, avec sa dérivée:
+```{r question1}
+sigma <- function(x) { 1 / (1 + exp(-x)) }
+sigmaDeriv <- function(x) { sigma(x)* (1- sigma(x))}
+```
+Le but est bien entendu d'estimer les paramètres $\theta^*=(w^*,b^*)$. On va pour cela trouver les paramètres qui minimisent une fonction de coût donnée.
+
+Vous pouvez vous amuser à tracer $\sigma(wx+b)$ pour différents paramètres candidats $(w,b)$: par exemple sur cette calculatrice graphique disponible en ligne, très intuitive: <https://www.desmos.com/calculator/wp7szcqppl>
+
+On imagine disposer de $n$ données $\{ (x_i, y_i), i =1, ..., n \}$. Pour mesurer la performance d'un paramètre candidat $\theta=(w,b)$ au vu d'un échantillon aléatoire de données $\{ (x_i, y_i), i \in \mathcal K \}$ avec $\mathcal K \subset \{ 1, ..., n\}$, on va essayer de minimiser la fonction de perte 
+$$ \ell(\mathcal K, \theta) = \frac{1}{\mathrm{card} \mathcal K} \sum_{i \in \mathcal K} (y_i - \sigma(wx_i+b))^2$$
+
+## Question 1a gradient bruité
+
+Dans ce cas, montrer que le gradient de $\ell(\mathcal K, \theta)$ est connu. Pourquoi dit-on qu'il est bruité?
+
+```{r question 1a}
+# votre réponse ici
+```
+
+<div class = "solution">
+***
+**Answer**
+$$ \frac{\partial}{\partial w} \ell(\mathcal K, \theta) = -\frac{1}{\mathrm{card} \mathcal K} \sum_{i \in \mathcal K} 2 (y_i - \sigma(wx_i+b)) \sigma'(wx_i+b) x_i$$ 
+$$ \frac{\partial}{\partial b} \ell(\mathcal K, \theta) = -\frac{1}{\mathrm{card} \mathcal K} \sum_{i \in \mathcal K} 2 (y_i - \sigma(wx_i+b)) \sigma'(wx_i+b)$$ 
+```{r question 1a SOLUTION}
+# le gradient est formé des deux dérivées ci-dessus, il est aléatoire dans la mesure où il est issu d'un échantillon aléatoire. On peut vérifier sous des conditions simples (lesquelles?) que ce gradient bruité a bien pour moyenne le gradient non bruité.
+
+```
+
+***
+</div>
+
+## Question 1b Import des données
+
+Nous allons utiliser des données issues d'un package de Machine Learning. Nous créons ainsi deux vecteurs $x$ et $y$ contenant les données à expliquer, ainsi qu'une variable $n$ contenant le nombre de données. Pour alléger le TP, ces variables seront laissées globales. En cas de problème d'import, ou si vous désirez changer, vous pouvez utiliser d'autres données.
+
+```{r question 1b import}
+#install.packages("mlbench") #install if needed
+require(mlbench)
+library(mlbench)
+data(BostonHousing)
+x <- log(BostonHousing$crim) + 6
+y <- BostonHousing$nox
+
+# choix d'autres variables possible, ici l'analyse est contestable ;-)
+# ci-après, pour info, le range des données:
+# en effet, inutile d'ajuster par une sigmoide si y<0 ou y>1 par exemple!
+range(x)
+range(y)
+
+n <- length(x)
+plot(x,y)
+```
+
+Créer un échantillon nommé `K` de $\{1, ..., n\}$ de taille `batchSize`, au moyen de la procédure `sample`. Pour avoir les échantillons correspondants de $x$ et de $y$, il suffira de faire `x[K]` et `y[K]`.
+
+```{r question 1b}
+# votre réponse ici, création de K:
+```
+
+<div class = "solution">
+***
+**Answer**:
+```{r question 1b SOLUTION}
+# votre réponse ici, création de K:
+batchSize <- 10
+K <- sample(1:n, batchSize)
+xsample <- x[K]
+ysample <- y[K]
+
+```
+
+***
+</div>
+
+## Question 1c. gradient bruité calculé sur Batch
+
+On supposera que l'on encapsule les paramètres $w$ et $b$, par exemple dans un vecteur nommé:
+```{r question 1c theta}
+theta <- c(1, 0)
+names(theta) <- c("w", "b")
+```
+
+Calculons ici le gradient de la fonction loss donnée plus haut, si ce n'est pas déjà fait:
+$$ \frac{\partial}{\partial w} \ell(\mathcal K, \theta) = -\frac{1}{\mathrm{card} \mathcal K} \sum_{i \in \mathcal K} 2 (y_i - \sigma(wx_i+b)) \sigma'(wx_i+b) x_i$$ 
+$$ \frac{\partial}{\partial b} \ell(\mathcal K, \theta) = -\frac{1}{\mathrm{card} \mathcal K} \sum_{i \in \mathcal K} 2 (y_i - \sigma(wx_i+b)) \sigma'(wx_i+b)$$ 
+
+Pour un échantillon `K`, programmer le gradient en un point $\theta$, pour cet échantillon `K` (donc en fonction de ces deux arguments point et échantillon).
+```{r question 1c}
+# votre code ici
+```
+
+<div class = "solution">
+***
+**Answer**
+```{r question 1c SOLUTION}
+
+G <- function(theta, K){
+  # raccourcis pour alléger l'écriture
+  w <- theta[['w']]
+  b <- theta[['b']]
+  xK <- x[K]
+  yK <- y[K]
+
+  termesb <- -2 * (yK - sigma(w*xK + b)) * sigmaDeriv(w * xK + b)
+  termesw <- termesb * xK
+  gradient <- c(mean(termesw), mean(termesb))
+  names(gradient) <- c("gradw", "gradb")
+  return(gradient)
+}
+
+theta <- c(3.12, 0.34)
+names(theta) <- c("w", "b")
+
+G(theta, K)
+
+```
+
+***
+</div>
+
+## Question 1d. Robbins-Monro
+
+Appliquer alors des itérations de Robbins-Monro. Une fois que cela fonctionne, encapsuler le tout, si nécessaire, dans une fonction prenant $\mathcal K$ (ou bien la taille batchSize) en argument, ainsi que les différents paramètres liés au point initial, aux pas et au nombre d'itérations.
+
+Au final, tracer les valeurs successives des deux paramètres $w$ et $b$. On prendra par exemple des valeurs d'initialisation $w=1$ et $b=0$ pour initier la séquence de Robbins-Monro.
+
+```{r question 1d}
+# votre code ici
+```
+
+<div class = "solution">
+***
+**Answer**
+```{r question 1d SOLUTION}
+RobbinsMonro <- function(thetainit, a, alpha=1, batchSize=5, nmax=100) {
+  ListeTheta <- data.frame(ncol=2, nrow=nmax)
+  colnames(ListeTheta) = c("w","b")
+  
+  n <- length(x)
+  Theta <- thetainit
+  names(Theta) <- c("w","b")
+  ListeTheta[1,] = thetainit
+  for(i in 1:(nmax-1)) {
+    K <- sample(1:n, batchSize)
+    Theta <- Theta - a/(i^alpha) * G(Theta, K)
+    ListeTheta[i+1,] <- Theta
+  }
+  return(ListeTheta)
+}
+
+thetainit <- c(1,0)
+
+ListeTheta <- RobbinsMonro(thetainit, a=5, batchSize=5, nmax=100)
+plot(ListeTheta, lty="solid")
+
+```
+
+***
+</div>
+
+Extraire alors le paramètre estimé pour $\theta^*$, tracer l'ajustement correspondant, en le superposant au dessus des points du data initial. Tracer également l'ajustement correspondant aux paramètres initiaux (valeurs d'initialisation données plus haut). Par exemple, en rouge pour le $\theta$ initial, en bleu pour l'estimateur de $\theta^*$ obtenu après convergence.
+```{r question 1d trace}
+# votre code ici
+```
+
+<div class = "solution">
+***
+**Answer**
+```{r question 1d trace SOLUTION}
+
+nmax <- as.integer(nrow(ListeTheta))
+ThetaStar <- ListeTheta[nmax, ]
+
+names(thetainit) <- c("w","b")
+winit <- thetainit[1]
+binit <- thetainit[2]
+
+wstar <- ThetaStar$w
+bstar <- ThetaStar$b
+
+seqx= seq(from=min(x), to=max(x), length.out=1000)
+seqyinit = sigma(winit*seqx + binit)
+seqystar = sigma(wstar*seqx + bstar)
+
+plot(x,y, ylim= c(0,1))
+lines(seqx, seqyinit, type="l", col="red")
+lines(seqx, seqystar, type="l", col="blue")
+
+```
+
+***
+</div>
+
+## Question 1e. Ouverture
+Vous pouvez à présent jouer sur les éléments suivants:
+
+* taille du batch
+* taux de décroissance des pas, pas initial, pas constants
+* modification de la fonction de perte
+* données simulées selon le modèle (pour vérifier la convergence)
+* données différentes
+* davantage de neurones, par exemple deux neurones
+* méthodes d'accélération
+* etc.
+
+```{r question 1e}
+# votre réponse ici
+```
+
+
